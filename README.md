@@ -1,6 +1,13 @@
 # Landing Page — estilo Tron
 
-Modelo de landing page num arquivo só, o [`index.html`](index.html): HTML, CSS e JavaScript puro, sem build e sem bibliotecas. A única dependência externa são as fontes do Google Fonts (Exo 2 e Share Tech Mono).
+Duas páginas no mesmo estilo, cada uma num arquivo só: HTML, CSS e JavaScript puro, sem build e sem bibliotecas. A única dependência externa são as fontes do Google Fonts (Exo 2 e Share Tech Mono).
+
+| Página | O que é |
+|---|---|
+| [`index.html`](index.html) | v1: landing tradicional, com seções e animação de fundo. |
+| [`jornada.html`](jornada.html) | Jornada pela Grade: viagem imersiva em 3D. A rolagem move a câmera por 6 setores (Portal, Grade, Arena, Cidade, Mar de Simulação e Saída). As instruções estão no comentário do topo do arquivo. |
+
+As seções abaixo descrevem a v1 (`index.html`).
 
 ## Visual
 

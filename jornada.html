@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jornada pela Grade</title>
+<!--
+  JORNADA PELA GRADE: landing imersiva no estilo Tron
+  ===================================================
+  Arquivo único, com HTML, CSS e JS puro, sem bibliotecas. Abra direto no navegador.
+
+  COMO FUNCIONA
+  - O fundo é um mundo 3D desenhado em <canvas>. A rolagem da página move a câmera
+    para a frente: cada <section class="chap"> é um setor da viagem, com 1000 unidades de profundidade.
+  - Cada setor tem um cenário próprio, ligado pela ORDEM das seções:
+      1 O Portal  -> molduras de luz que a câmera atravessa
+      2 A Grade   -> montanhas no horizonte e torres de sinal na pista
+      3 A Arena   -> motos de luz (ciano e laranja) correndo com rastro
+      4 A Cidade  -> prédios em wireframe dos dois lados
+      5 O Mar     -> partículas, colunas de dados e chão de pontos em onda
+      6 A Saída   -> portal de luz no fim do caminho (chamada final)
+  - O texto de cada setor fica no .card da seção. Ele aparece e some sozinho conforme a rolagem.
+
+  PARA EDITAR
+  - Textos: troque o conteúdo de cada .card. O data-name da seção vira o nome no trilho lateral e no HUD.
+  - Cores: variáveis em :root (CSS) e as constantes CYAN, ORANGE e TINT (JS). TINT é a cor do horizonte por setor.
+  - Ritmo: a altura de .chap (170vh) define quanto rolar por setor.
+  - Para criar um setor novo, acrescente uma <section class="chap">. Do 7º em diante só aparece a grade;
+    para ter cenário próprio, crie uma função de desenho e chame-a em frame().
+
+  ACESSIBILIDADE
+  - Com "reduzir movimento" no sistema, não há animação contínua: a câmera só anda quando você rola.
+  - O som vem desligado e só liga pelo botão. É um zumbido gerado na hora (Web Audio), sem arquivo.
+  - Os botões do trilho levam direto a cada setor.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#02060A; --ink:#DDF6FF; --muted:#8FB3C2; --dim:#3E5966; --white:#F2FDFF;
+  --cyan:#5FF2FF; --cyan-soft:rgba(95,242,255,.10);
+  --glow:0 0 6px rgba(95,242,255,.55),0 0 18px rgba(95,242,255,.25);
+  --orange:#FF9A2E;
+  --panel:rgba(2,10,16,.74);
+  --line:rgba(95,242,255,.14); --line-2:rgba(95,242,255,.34);
+  --mono:"Share Tech Mono",ui-monospace,Consolas,monospace;
+  --display:"Exo 2",system-ui,sans-serif;
+  --gut:clamp(16px,2.4vw,30px);
+}
+*{box-sizing:border-box}
+html{background:var(--bg);color-scheme:dark}
+html.locked,html.locked body{overflow:hidden}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--display);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:1px solid var(--cyan);outline-offset:3px;box-shadow:var(--glow)}
+
+#world{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0}
+.vignette{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(ellipse 75% 70% at 50% 47%,transparent 50%,rgba(0,0,0,.7) 100%)}
+.scanlines{position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.35;background:repeating-linear-gradient(0deg,rgba(0,0,0,.35) 0 1px,transparent 1px 3px)}
+
+/* HUD */
+.hud-top{position:fixed;top:0;left:0;right:0;z-index:6;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px var(--gut);font-family:var(--mono);font-size:12px;letter-spacing:.28em;text-transform:uppercase;background:linear-gradient(180deg,rgba(2,6,10,.75),transparent)}
+.logo{color:var(--cyan);text-decoration:none;text-shadow:var(--glow);letter-spacing:.42em}
+.sector{display:flex;gap:16px;align-items:center;color:var(--muted)}
+.sector b{color:var(--white);font-weight:400}
+.sector #hName{color:var(--cyan);text-shadow:var(--glow)}
+.snd{font:inherit;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);background:transparent;border:1px solid var(--line-2);padding:6px 12px;cursor:pointer}
+.snd[aria-pressed="true"]{color:var(--cyan);border-color:var(--cyan);box-shadow:var(--glow)}
+
+.track{position:fixed;left:var(--gut);top:50%;transform:translateY(-50%);z-index:6;display:flex;flex-direction:column}
+.track::before{content:"";position:absolute;left:4px;top:14px;bottom:14px;width:1px;background:var(--line-2)}
+.track button{position:relative;display:flex;align-items:center;gap:14px;padding:10px 0;background:none;border:0;cursor:pointer;color:var(--dim);font-family:var(--mono);font-size:11px;letter-spacing:.24em;text-transform:uppercase;text-align:left}
+.track i{width:9px;height:9px;flex:none;border:1px solid currentColor;background:var(--bg);transform:rotate(45deg);transition:background .3s,box-shadow .3s}
+.track span{opacity:0;transform:translateX(-6px);transition:opacity .3s,transform .3s;white-space:nowrap}
+.track:hover span,.track button:focus-visible span{opacity:1;transform:none}
+@media (min-width:1400px){.track button.on span{opacity:1;transform:none}}
+.track button:hover{color:var(--muted)}
+.track button.on{color:var(--cyan);text-shadow:var(--glow)}
+.track button.on i{background:var(--cyan);box-shadow:var(--glow)}
+
+.telemetry{position:fixed;left:var(--gut);bottom:20px;z-index:6;display:flex;gap:28px;font-family:var(--mono);font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim)}
+.telemetry b{display:block;margin-top:2px;font-weight:400;font-size:15px;letter-spacing:.12em;color:var(--white)}
+.hint{position:fixed;right:var(--gut);bottom:20px;z-index:6;display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--cyan);text-shadow:var(--glow);transition:opacity .6s}
+.hint i{width:9px;height:9px;border-right:1px solid var(--cyan);border-bottom:1px solid var(--cyan);transform:rotate(45deg);animation:nudge 1.6s ease-in-out infinite}
+.hint.off{opacity:0}
+@keyframes nudge{50%{transform:translateY(4px) rotate(45deg)}}
+.bar{position:fixed;left:0;right:0;bottom:0;height:2px;z-index:6;background:var(--line)}
+.bar i{display:block;height:100%;width:0;background:var(--cyan);box-shadow:var(--glow)}
+
+/* Setores */
+main{position:relative;z-index:3}
+.chap{position:relative;height:170vh}
+.chap:last-child{height:200vh}
+.card{position:sticky;top:22vh;width:min(500px,calc(100% - 2*var(--gut)));margin-left:clamp(96px,12vw,210px);padding:26px 30px 28px;opacity:0;
+  background:var(--panel);border:1px solid var(--line-2);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  clip-path:polygon(0 0,calc(100% - 18px) 0,100% 18px,100% 100%,18px 100%,0 calc(100% - 18px));will-change:opacity,transform}
+.card::before,.card::after{content:"";position:absolute;width:26px;height:26px;pointer-events:none}
+.card::before{left:-1px;top:-1px;border-left:2px solid var(--cyan);border-top:2px solid var(--cyan);filter:drop-shadow(0 0 4px var(--cyan))}
+.card::after{right:-1px;bottom:-1px;border-right:2px solid var(--cyan);border-bottom:2px solid var(--cyan);filter:drop-shadow(0 0 4px var(--cyan))}
+.chap.right .card{margin-left:auto;margin-right:clamp(var(--gut),9vw,160px)}
+
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.32em;color:var(--cyan);text-transform:uppercase;text-shadow:var(--glow)}
+h1,h2{margin:10px 0 14px;font-weight:300;font-size:clamp(30px,4.4vw,54px);line-height:1.06;letter-spacing:.07em;text-transform:uppercase;color:var(--white)}
+h1 b,h2 b{font-weight:600;color:var(--cyan);text-shadow:var(--glow)}
+.card p{margin:0 0 12px;color:var(--muted)}
+.card p strong{color:var(--ink);font-weight:500}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}
+.stat{border:1px solid var(--line);background:rgba(0,0,0,.35);padding:12px 12px 10px}
+.stat .v{font-family:var(--mono);font-size:26px;line-height:1;color:var(--white);text-shadow:0 0 10px rgba(95,242,255,.4)}
+.stat .v.o{color:var(--orange);text-shadow:0 0 10px rgba(255,154,46,.45)}
+.stat .l{margin-top:6px;font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+
+.feats{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:12px}
+.feats li{display:grid;grid-template-columns:22px 1fr;gap:10px;align-items:start}
+.feats li::before{content:"";width:9px;height:9px;margin:8px 0 0 4px;border:1px solid var(--cyan);background:var(--cyan-soft);transform:rotate(45deg);box-shadow:var(--glow)}
+.feats b{display:block;color:var(--ink);font-weight:500;letter-spacing:.04em}
+.feats span{color:var(--muted);font-size:15px}
+
+blockquote{margin:16px 0 0;padding:4px 0 0 18px;border-left:2px solid var(--cyan);font-size:20px;font-weight:300;line-height:1.45;color:var(--white)}
+blockquote small{display:block;margin-top:10px;font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+
+.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:22px}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:13px 22px;font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.16em;text-transform:uppercase;text-decoration:none;cursor:pointer;
+  color:var(--cyan);background:transparent;border:1px solid var(--cyan);clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);transition:background .2s,color .2s,box-shadow .2s}
+.btn:hover{background:var(--cyan-soft);box-shadow:var(--glow)}
+.btn.primary{background:var(--cyan);color:#001318}
+.btn.primary:hover{background:var(--white)}
+.foot{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+
+/* Entrada (digitalização) */
+#boot{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:var(--gut);
+  background:radial-gradient(ellipse at 50% 50%,rgba(2,14,22,.82),rgba(1,4,8,.96));clip-path:inset(0 0 0 0)}
+#boot[hidden],.laser[hidden]{display:none}
+#boot.go{animation:wipe 1.15s cubic-bezier(.65,0,.3,1) forwards}
+@keyframes wipe{to{clip-path:inset(100% 0 0 0)}}
+.term{width:min(560px,100%);font-family:var(--mono);font-size:14px;letter-spacing:.08em;color:var(--muted)}
+.term .ln{margin:0 0 6px;opacity:0;transition:opacity .2s}
+.term .ln.on{opacity:1}
+.term .ok{color:var(--cyan);text-shadow:var(--glow)}
+.term h1{margin:22px 0 8px;font-size:clamp(34px,6vw,64px)}
+.caret::after{content:"_";animation:blink 1s steps(1) infinite;color:var(--cyan)}
+@keyframes blink{50%{opacity:0}}
+.boot-act{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:22px;opacity:0;transition:opacity .4s}
+.boot-act.on{opacity:1}
+.boot-act small{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim)}
+.laser{position:fixed;left:0;right:0;top:0;height:2px;z-index:21;pointer-events:none;opacity:0;background:#fff;box-shadow:0 0 10px var(--cyan),0 0 30px var(--cyan),0 0 80px var(--cyan)}
+.laser.go{animation:laser 1.15s cubic-bezier(.65,0,.3,1) forwards}
+@keyframes laser{0%{top:0;opacity:1}92%{opacity:1}100%{top:100%;opacity:0}}
+
+@media (max-width:760px){
+  .track,.sector span:first-child,.telemetry div:nth-child(3){display:none}
+  .hud-top{font-size:11px;letter-spacing:.2em}
+  .logo{letter-spacing:.3em}
+  .card,.chap.right .card{margin:0 auto;top:14vh;padding:20px 20px 22px}
+  .stats{grid-template-columns:1fr 1fr 1fr;gap:6px}
+  .stat .v{font-size:20px}
+  .telemetry{gap:18px}
+  .hint{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  #boot.go,.laser.go{animation:none}
+  .hint i,.caret::after{animation:none}
+}
+</style>
+</head>
+<body>
+<canvas id="world" aria-hidden="true"></canvas>
+<div class="vignette" aria-hidden="true"></div>
+<div class="scanlines" aria-hidden="true"></div>
+
+<header class="hud-top">
+  <a class="logo" href="#c1">The&nbsp;Grid</a>
+  <div class="sector"><span>Setor <b id="hSec">01/06</b></span><span id="hName">O Portal</span></div>
+  <button class="snd" id="snd" type="button" aria-pressed="false">Som: desl.</button>
+</header>
+
+<nav class="track" id="track" aria-label="Setores da jornada"></nav>
+
+<div class="telemetry" aria-hidden="true">
+  <div>Velocidade<b><span id="tVel">0000</span> u/s</b></div>
+  <div>Distância<b id="tZ">0000</b></div>
+  <div>Desvio X<b id="tX">+0.0</b></div>
+</div>
+<div class="hint" id="hint" aria-hidden="true">Role para avançar <i></i></div>
+<div class="bar" aria-hidden="true"><i id="bar"></i></div>
+
+<main id="main">
+  <section class="chap" id="c1" data-name="O Portal">
+    <div class="card">
+      <span class="eyebrow">Setor 01 · O Portal</span>
+      <h2>Bem-vindo à <b>Grade</b></h2>
+      <p>Você acaba de ser digitalizado. Daqui para a frente, tudo é feito de <strong>luz, dados e movimento</strong>.</p>
+      <p>Role a página: cada setor é uma etapa da jornada.</p>
+    </div>
+  </section>
+
+  <section class="chap right" id="c2" data-name="A Grade">
+    <div class="card">
+      <span class="eyebrow">Setor 02 · A Grade</span>
+      <h2>Um mundo <b>sem bordas</b></h2>
+      <p>No horizonte, montanhas de dados. No chão, a grade que liga tudo.</p>
+      <p>É assim que a sua ideia aparece aqui: <strong>um sistema inteiro</strong>, desenhado linha por linha, com precisão.</p>
+    </div>
+  </section>
+
+  <section class="chap" id="c3" data-name="A Arena">
+    <div class="card">
+      <span class="eyebrow">Setor 03 · A Arena</span>
+      <h2>Velocidade <b>é tudo</b></h2>
+      <p>As motos de luz não freiam, e o seu projeto também não precisa.</p>
+      <!-- Números de exemplo: troque pelos seus. -->
+      <div class="stats">
+        <div class="stat"><div class="v">0,8s</div><div class="l">Carregamento</div></div>
+        <div class="stat"><div class="v">99,9%</div><div class="l">No ar</div></div>
+        <div class="stat"><div class="v o">24/7</div><div class="l">Em operação</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chap right" id="c4" data-name="A Cidade">
+    <div class="card">
+      <span class="eyebrow">Setor 04 · A Cidade</span>
+      <h2>Tudo <b>conectado</b></h2>
+      <ul class="feats">
+        <li><div><b>Programas que conversam</b><span>Cada parte do sistema sabe o que a outra está fazendo.</span></div></li>
+        <li><div><b>Dados no lugar certo</b><span>Uma fonte só, sempre atualizada, sem planilha perdida.</span></div></li>
+        <li><div><b>Acesso de qualquer terminal</b><span>Do computador da sala ao celular, no mesmo link.</span></div></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="chap" id="c5" data-name="O Mar">
+    <div class="card">
+      <span class="eyebrow">Setor 05 · O Mar de Simulação</span>
+      <h2>Silêncio <b>entre os pulsos</b></h2>
+      <blockquote>“Lá dentro, cada linha tinha um propósito. Nada brilhava por acaso.”
+        <small>Visitante 0001</small></blockquote>
+    </div>
+  </section>
+
+  <section class="chap" id="c6" data-name="A Saída">
+    <div class="card">
+      <span class="eyebrow">Setor 06 · O Portal de Saída</span>
+      <h2>Fim da linha.<br><b>Começo da sua.</b></h2>
+      <p>O portal está aberto. Leve a jornada para fora da Grade.</p>
+      <div class="actions">
+        <!-- Troque o href pelo seu contato (mailto:, WhatsApp, formulário...). -->
+        <a class="btn primary" href="#">Iniciar contato</a>
+        <button class="btn" type="button" id="again">Refazer a jornada</button>
+      </div>
+      <div class="foot">© 2026 · Sua marca · Feito de luz</div>
+    </div>
+  </section>
+</main>
+
+<div id="boot" role="dialog" aria-modal="true" aria-labelledby="bootT">
+  <div class="term">
+    <p class="ln">&gt; sistema da grade // v1.0</p>
+    <p class="ln">&gt; conexão estabelecida ........ <span class="ok">ok</span></p>
+    <p class="ln">&gt; usuário: <span class="ok">visitante</span></p>
+    <p class="ln">&gt; matriz de digitalização ..... <span class="ok">carregada</span></p>
+    <p class="ln caret">&gt; aguardando autorização</p>
+    <h1 class="ln" id="bootT">Entrar na <b>Grade</b></h1>
+    <div class="boot-act" id="bootAct">
+      <button class="btn primary" type="button" id="enter">Iniciar digitalização</button>
+      <small>ou role a página</small>
+    </div>
+  </div>
+</div>
+<div class="laser" id="laser" aria-hidden="true"></div>
+
+<script>
+(() => {
+"use strict";
+const RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const $ = s => document.querySelector(s);
+const cv = $("#world"), ctx = cv.getContext("2d");
+const secs = [...document.querySelectorAll(".chap")];
+const cards = secs.map(s => s.querySelector(".card"));
+const N = secs.length, SPAN = 1000, END = N * SPAN - 120;
+const NEAR = 1.5, FAR = 720, G = 8, GX = 168;
+const CYAN = [95,242,255], ORANGE = [255,154,46];
+const TINT = [[95,242,255],[95,242,255],[255,150,70],[110,210,255],[70,110,255],[210,250,255]];
+
+let W = 0, H = 0, DPR = 1, cx = 0, cy = 0, F0 = 0, F = 0, R = 0;
+let tops = [], hs = [];
+const cam = {x:0, y:3, z:0};
+let vel = 0, t = 0, last = performance.now(), idx = 0, lastIdx = -1;
+
+const clamp = (v,a,b) => v < a ? a : v > b ? b : v;
+const ss = (a,b,v) => { const x = clamp((v-a)/(b-a),0,1); return x*x*(3-2*x); };
+const md = (v,m) => ((v % m) + m) % m;
+const rgba = (c,a) => `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
+function rng(seed){ return () => { seed = seed + 0x6D2B79F5 | 0; let r = Math.imul(seed ^ seed >>> 15, 1 | seed); r = r + Math.imul(r ^ r >>> 7, 61 | r) ^ r; return ((r ^ r >>> 14) >>> 0) / 4294967296; }; }
+
+function size(){
+  DPR = Math.min(devicePixelRatio || 1, 1.5); W = innerWidth; H = innerHeight;
+  cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
+  cx = W/2; cy = H*0.47; F0 = Math.max(W, H*1.3)*0.6; R = Math.hypot(W,H);
+  tops = secs.map(s => s.offsetTop); hs = secs.map(s => s.offsetHeight);
+}
+
+// rolagem -> profundidade: cada seção cobre um setor inteiro
+function target(){
+  const y = scrollY; let i = 0;
+  while (i < N-1 && y >= tops[i+1]) i++;
+  const span = i === N-1 ? Math.max(1, hs[i] - H) : hs[i];
+  idx = i;
+  return Math.min(END, (i + clamp((y - tops[i]) / span, 0, 1)) * SPAN);
+}
+
+/* projeção 3D */
+function P(x,y,z){ const d = z - cam.z; if (d < NEAR) return null; const k = F/d; return [cx + (x-cam.x)*k, cy - (y-cam.y)*k, d]; }
+function seg(x1,y1,z1,x2,y2,z2){
+  const d1 = z1-cam.z, d2 = z2-cam.z;
+  if (d1 < NEAR && d2 < NEAR) return null;
+  // +0.001: sem a folga, o arredondamento joga o ponto cortado para trás do plano e P() devolve null
+  if (d1 < NEAR){ const k = (NEAR-d1)/(d2-d1); x1 += (x2-x1)*k; y1 += (y2-y1)*k; z1 = cam.z+NEAR+0.001; }
+  else if (d2 < NEAR){ const k = (NEAR-d2)/(d1-d2); x2 += (x1-x2)*k; y2 += (y1-y2)*k; z2 = cam.z+NEAR+0.001; }
+  const a = P(x1,y1,z1), b = P(x2,y2,z2); return [a[0],a[1],b[0],b[1]];
+}
+const fade = d => d < FAR*0.55 ? 1 : Math.max(0, 1 - (d - FAR*0.55)/(FAR*0.45));
+function line(s){ if (s){ ctx.moveTo(s[0],s[1]); ctx.lineTo(s[2],s[3]); } }
+
+/* céu e horizonte */
+function sky(w){
+  let r = 0, g = 0, b = 0, s = 0;
+  for (let i = 0; i < N; i++){ const c = TINT[i] || CYAN; r += c[0]*w[i]; g += c[1]*w[i]; b += c[2]*w[i]; s += w[i]; }
+  const tint = s > 1e-3 ? [r/s, g/s, b/s] : CYAN;
+  const up = ctx.createLinearGradient(0, cy-H*0.6, 0, cy);
+  up.addColorStop(0, "#010308"); up.addColorStop(0.7, rgba(tint,0.05)); up.addColorStop(1, rgba(tint,0.3));
+  ctx.fillStyle = up; ctx.fillRect(cx-R, cy-R, 2*R, R);
+  const dn = ctx.createLinearGradient(0, cy, 0, cy+H*0.6);
+  dn.addColorStop(0, rgba(tint,0.12)); dn.addColorStop(0.3, "#01050A"); dn.addColorStop(1, "#000206");
+  ctx.fillStyle = dn; ctx.fillRect(cx-R, cy, 2*R, R);
+  return tint;
+}
+const MT = (() => { const r = rng(7), a = []; for (let i = 0; i <= 72; i++) a.push(r()); return a; })();
+function mountains(a, tint){
+  if (a < 0.01) return;
+  const n = MT.length-1, step = 2*R/n, x0 = cx - R - cam.x*6;
+  for (const [hh, sh, al] of [[0.12, 0, 0.45], [0.06, 23, 0.8]]){
+    ctx.beginPath(); ctx.moveTo(x0, cy);
+    for (let i = 0; i <= n; i++){ const v = MT[(i+sh) % (n+1)]; ctx.lineTo(x0 + i*step, cy - v*v*H*hh*a); }
+    ctx.lineTo(x0 + 2*R, cy); ctx.closePath();
+    ctx.fillStyle = "#02070C"; ctx.fill();
+    ctx.strokeStyle = rgba(tint, al*a); ctx.lineWidth = 1; ctx.stroke();
+  }
+}
+function horizon(tint){
+  const g = ctx.createLinearGradient(0, cy-14, 0, cy+14);
+  g.addColorStop(0, rgba(tint,0)); g.addColorStop(0.5, rgba(tint,0.35)); g.addColorStop(1, rgba(tint,0));
+  ctx.fillStyle = g; ctx.fillRect(cx-R, cy-14, 2*R, 28);
+  ctx.fillStyle = rgba(tint, 0.9); ctx.fillRect(cx-R, cy-0.5, 2*R, 1);
+}
+
+/* chão em grade */
+function grid(a){
+  if (a < 0.01) return;
+  const z0 = cam.z+NEAR, z1 = cam.z+FAR, xa = Math.floor((cam.x-GX)/G)*G;
+  for (const [lw, al] of [[3, 0.07], [1, 0.3]]){
+    ctx.lineWidth = lw; ctx.strokeStyle = rgba(CYAN, al*a); ctx.beginPath();
+    for (let x = xa; x <= cam.x+GX; x += G) line(seg(x,0,z0, x,0,z1));
+    for (let z = Math.ceil(z0/G)*G; z < cam.z+260; z += G) line(seg(cam.x-GX,0,z, cam.x+GX,0,z));
+    ctx.stroke();
+  }
+  ctx.lineWidth = 1; ctx.strokeStyle = rgba(CYAN, 0.12*a); ctx.beginPath();
+  for (let z = Math.ceil((cam.z+260)/(2*G))*2*G; z < z1; z += 2*G) line(seg(cam.x-GX,0,z, cam.x+GX,0,z));
+  ctx.stroke();
+  // pulsos de energia correndo pelas linhas
+  ctx.lineWidth = 2; ctx.strokeStyle = rgba([220,252,255], 0.85*a); ctx.beginPath();
+  [-48,-32,-16,-8,8,16,32,48].forEach((x,k) => { const z = cam.z + 4 + md(t*(90+k*13) + k*211, 480); line(seg(x,0,z, x,0,z+12)); });
+  ctx.stroke();
+}
+function fog(){
+  const g = ctx.createLinearGradient(0, cy, 0, cy+H*0.16);
+  g.addColorStop(0, "rgba(1,4,9,.95)"); g.addColorStop(1, "rgba(1,4,9,0)");
+  ctx.fillStyle = g; ctx.fillRect(cx-R, cy-1, 2*R, H*0.16+1);
+}
+
+/* 1 · molduras do portal */
+const RINGS = Array.from({length:8}, (_,i) => 90 + i*108);
+const RING = [[-9,0],[9,0],[9,8],[7,10],[-7,10],[-9,8]];
+function rings(){
+  for (const z of RINGS){
+    const d = z - cam.z; if (d < NEAR || d > FAR) continue;
+    const a = fade(d) * ss(NEAR, 30, d) * (0.85 + 0.15*Math.sin(t*3 + z));
+    const p = RING.map(v => P(v[0], v[1], z));
+    for (const [lw, al] of [[6, 0.12], [1.6, 0.95]]){
+      ctx.lineWidth = lw; ctx.strokeStyle = rgba(CYAN, al*a); ctx.beginPath();
+      p.forEach((q,i) => i ? ctx.lineTo(q[0],q[1]) : ctx.moveTo(q[0],q[1]));
+      ctx.closePath(); ctx.stroke();
+    }
+  }
+}
+
+/* 2 · torres de sinal */
+const BEAC = []; for (let z = 1040; z < 2100; z += 64) BEAC.push(z);
+function beacons(){
+  for (const z of BEAC){
+    const d = z - cam.z; if (d < NEAR || d > FAR) continue;
+    const a = fade(d) * ss(NEAR, 20, d);
+    for (const x of [-24, 24]){
+      const s = seg(x,0,z, x,28,z);
+      for (const [lw, al] of [[7, 0.1], [1.5, 0.85]]){ ctx.lineWidth = lw; ctx.strokeStyle = rgba(CYAN, al*a); ctx.beginPath(); line(s); ctx.stroke(); }
+      const top = P(x,28,z), r = clamp(F/d*0.9, 1.5, 14);
+      ctx.fillStyle = rgba([230,255,255], a*(0.6 + 0.4*Math.sin(t*4 + z*0.1)));
+      ctx.beginPath(); ctx.moveTo(top[0], top[1]-r); ctx.lineTo(top[0]+r*0.6, top[1]); ctx.lineTo(top[0], top[1]+r); ctx.lineTo(top[0]-r*0.6, top[1]); ctx.fill();
+    }
+  }
+}
+
+/* 3 · motos de luz */
+const CYC = [{c:CYAN, lane:-8}, {c:CYAN, lane:16}, {c:ORANGE, lane:8}, {c:ORANGE, lane:-24}];
+function spawn(k, rel){ k.x = k.tx = k.lane; k.z = cam.z + rel; k.trail = [[k.x, k.z]]; k.turn = 1 + Math.random()*3; k.spd = 48 + Math.random()*30; k.on = true; }
+function cycles(dt, wA){
+  if (wA < 0.02){ CYC.forEach(k => k.on = false); return; }
+  CYC.forEach((k,i) => {
+    if (!k.on) spawn(k, 60 + i*55);
+    if (k.x !== k.tx){
+      const s = Math.sign(k.tx - k.x)*70*dt;
+      if (Math.abs(k.tx - k.x) <= Math.abs(s)){ k.x = k.tx; k.trail.push([k.x, k.z]); } else k.x += s;
+    } else {
+      // acompanha a câmera em volta de uma distância-alvo; parada, a câmera é ultrapassada de tempos em tempos
+      const goal = 45 + i*35 + Math.sin(t*0.4 + i)*25;
+      k.z += Math.max(k.spd*0.5, vel + (goal - (k.z - cam.z))*0.9)*dt; k.turn -= dt;
+      if (k.turn <= 0){
+        k.trail.push([k.x, k.z]);
+        let nx = clamp(k.x + (Math.random() < 0.5 ? -8 : 8)*(1 + (Math.random()*2|0)), -40, 40);
+        if (nx === 0) nx = k.x < 0 ? -8 : 8;
+        k.tx = nx; k.turn = 0.8 + Math.random()*2.4;
+      }
+    }
+    const rel = k.z - cam.z;
+    if (rel > 320 + i*35) spawn(k, -25 - Math.random()*30);
+    else if (rel < -80) spawn(k, 380 + Math.random()*120);
+    while (k.trail.length > 1 && k.z - k.trail[1][1] > 150) k.trail.shift();
+    const pts = k.trail.concat([[k.x, k.z]]);
+    for (let j = 0; j < pts.length-1; j++){
+      const [ax, az] = pts[j], [bx, bz] = pts[j+1];
+      const lo = seg(ax,0,az, bx,0,bz), hi = seg(ax,1.4,az, bx,1.4,bz);
+      if (!lo) continue;
+      const a = wA * fade(Math.max(az,bz) - cam.z);
+      ctx.fillStyle = rgba(k.c, 0.22*a);
+      ctx.beginPath(); ctx.moveTo(lo[0],lo[1]); ctx.lineTo(lo[2],lo[3]); ctx.lineTo(hi[2],hi[3]); ctx.lineTo(hi[0],hi[1]); ctx.fill();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = rgba(k.c, 0.9*a); ctx.beginPath(); line(hi); ctx.stroke();
+    }
+    const h = P(k.x, 0.7, k.z);
+    if (h){
+      const a = wA * fade(h[2]), r = clamp(F/h[2]*2.2, 3, 90);
+      const g = ctx.createRadialGradient(h[0],h[1],0, h[0],h[1],r);
+      g.addColorStop(0, rgba([255,255,255], a)); g.addColorStop(0.25, rgba(k.c, 0.8*a)); g.addColorStop(1, rgba(k.c, 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(h[0], h[1], r, 0, 7); ctx.fill();
+    }
+  });
+}
+
+/* 4 · cidade */
+const TOW = (() => {
+  const r = rng(42), a = [];
+  for (let z = 3020; z < 4280; z += 22 + r()*26){
+    const bell = Math.sin(clamp((z-3000)/1300, 0, 1)*Math.PI);
+    for (const sd of [-1, 1]){
+      if (r() < 0.12) continue;
+      const w = 7 + r()*12, dp = 8 + r()*16, h = 12 + r()*(30 + 60*bell), xin = 13 + r()*10;
+      const x0 = sd > 0 ? xin : -xin - w;
+      a.push({x0, x1:x0+w, z0:z, z1:z+dp, h});
+      if (r() < 0.7){
+        const w2 = 10 + r()*16, xin2 = xin + w + 6 + r()*14, xb = sd > 0 ? xin2 : -xin2 - w2;
+        a.push({x0:xb, x1:xb+w2, z0:z + r()*10, z1:z + dp + r()*20, h:h*(1.1 + r()*0.8)});
+      }
+    }
+  }
+  return a;
+})();
+function towers(){
+  const vis = TOW.filter(b => b.z1 > cam.z+NEAR && b.z0 < cam.z+FAR).sort((a,b) => b.z0 - a.z0);
+  for (const b of vis){
+    const a = fade(Math.max(NEAR, b.z0 - cam.z)); if (a < 0.01) continue;
+    const zn = Math.max(b.z0, cam.z+NEAR+0.01), faces = [];
+    if (b.z0 > cam.z+NEAR) faces.push([[b.x0,0,b.z0],[b.x1,0,b.z0],[b.x1,b.h,b.z0],[b.x0,b.h,b.z0]]);
+    const xs = b.x0 > cam.x ? b.x0 : b.x1 < cam.x ? b.x1 : null;
+    if (xs !== null) faces.push([[xs,0,zn],[xs,0,b.z1],[xs,b.h,b.z1],[xs,b.h,zn]]);
+    for (const f of faces){
+      const p = f.map(v => P(v[0],v[1],v[2]));
+      if (p.some(q => !q)) continue;
+      ctx.globalCompositeOperation = "source-over"; ctx.fillStyle = `rgba(1,6,12,${0.96*a})`;
+      ctx.beginPath(); p.forEach((q,i) => i ? ctx.lineTo(q[0],q[1]) : ctx.moveTo(q[0],q[1])); ctx.closePath(); ctx.fill();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.lineWidth = 1; ctx.strokeStyle = rgba(CYAN, 0.55*a); ctx.stroke();
+      ctx.strokeStyle = rgba(CYAN, 0.14*a); ctx.beginPath();
+      for (let y = 5; y < b.h-2; y += 5){ const A = P(f[0][0],y,f[0][2]), B = P(f[1][0],y,f[1][2]); ctx.moveTo(A[0],A[1]); ctx.lineTo(B[0],B[1]); }
+      ctx.stroke();
+      ctx.lineWidth = 2; ctx.strokeStyle = rgba(CYAN, 0.9*a); ctx.beginPath(); ctx.moveTo(p[2][0],p[2][1]); ctx.lineTo(p[3][0],p[3][1]); ctx.stroke();
+    }
+  }
+}
+
+/* 5 · mar de simulação */
+const PS = (() => { const r = rng(5), a = []; for (let i = 0; i < 240; i++) a.push([(r()-0.5)*280, r()*FAR, r()*48, 1 + r()*3]); return a; })();
+const STREAMS = (() => { const r = rng(9), a = []; for (let i = 0; i < 26; i++){ let x = (r()-0.5)*220; if (Math.abs(x) < 10) x += x < 0 ? -14 : 14; a.push([x, r()*FAR, r()*40, 8 + r()*14]); } return a; })();
+function sea(a){
+  if (a < 0.01) return;
+  ctx.fillStyle = "rgb(170,215,255)";
+  for (const p of PS){
+    const q = P(p[0], md(p[2] + t*p[3], 48), cam.z + NEAR + md(p[1] - cam.z, FAR - NEAR)); if (!q) continue;
+    const al = a*fade(q[2])*0.9; if (al < 0.02) continue;
+    const r = clamp(F/q[2]*0.18, 0.6, 3.5); ctx.globalAlpha = al; ctx.fillRect(q[0]-r/2, q[1]-r/2, r, r);
+  }
+  ctx.fillStyle = "rgb(120,190,255)";
+  for (let x = -80; x <= 80; x += 8) for (let z = Math.ceil((cam.z+4)/8)*8; z < cam.z+320; z += 8){
+    const q = P(x, Math.sin(x*0.12 + t*1.3)*0.45 + Math.cos(z*0.09 + t*0.9)*0.45, z); if (!q) continue;
+    const r = clamp(F/q[2]*0.12, 0.6, 3); ctx.globalAlpha = a*(1 - q[2]/320)*0.9; ctx.fillRect(q[0]-r/2, q[1]-r/2, r, r);
+  }
+  ctx.lineWidth = 1.2;
+  for (const s of STREAMS){
+    const z = cam.z + NEAR + md(s[1] - cam.z, FAR - NEAR), al = a*fade(z - cam.z);
+    ctx.globalAlpha = al*0.25; ctx.strokeStyle = "rgb(90,140,255)"; ctx.beginPath(); line(seg(s[0],0,z, s[0],40,z)); ctx.stroke();
+    const yh = md(s[2] + t*s[3], 46) - 3;
+    ctx.globalAlpha = al; ctx.strokeStyle = "#CFE9FF"; ctx.beginPath(); line(seg(s[0],yh,z, s[0],yh+5,z)); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* 6 · portal de saída */
+function exitPortal(a){
+  if (a < 0.01) return;
+  const z = N*SPAN - 10, d = z - cam.z; if (d < NEAR) return;
+  const c = P(0, 11, z), r = 16*F/d, al = a*clamp(1 - (d-80)/900, 0, 1);
+  ctx.lineWidth = 2; ctx.strokeStyle = rgba([220,252,255], 0.7*al); ctx.beginPath(); line(seg(0,0.02,cam.z+NEAR, 0,0.02,z)); ctx.stroke();
+  const g = ctx.createRadialGradient(c[0],c[1],0, c[0],c[1],r*2.6);
+  g.addColorStop(0, rgba([240,255,255], 0.95*al)); g.addColorStop(0.32, rgba(CYAN, 0.45*al)); g.addColorStop(1, rgba(CYAN, 0));
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c[0], c[1], r*2.6, 0, 7); ctx.fill();
+  for (let k = 0; k < 3; k++){
+    ctx.lineWidth = k ? 1.2 : 2.5; ctx.strokeStyle = rgba(CYAN, (k ? 0.5 : 0.95)*al);
+    ctx.setLineDash([r*0.32, r*0.12]); ctx.lineDashOffset = t*30*(k % 2 ? 1 : -1);
+    ctx.beginPath(); ctx.arc(c[0], c[1], r*(1 + k*0.2), 0, 7); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+
+/* rastros de velocidade (tela) */
+const STK = Array.from({length:48}, () => [Math.random()*Math.PI*2, Math.random()]);
+function streaks(s){
+  if (s < 0.02) return;
+  const M = R/2; ctx.lineWidth = 1; ctx.strokeStyle = rgba([200,250,255], 0.35*s); ctx.beginPath();
+  for (const [ang, o] of STK){
+    const r0 = M*(0.2 + md(o + t*1.5, 1)*0.8), r1 = r0 + M*0.25*s, c = Math.cos(ang), n = Math.sin(ang);
+    ctx.moveTo(cx + c*r0, cy + n*r0); ctx.lineTo(cx + c*r1, cy + n*r1);
+  }
+  ctx.stroke();
+}
+
+/* HUD e textos */
+const hSec = $("#hSec"), hName = $("#hName"), tVel = $("#tVel"), tZ = $("#tZ"), tX = $("#tX"), bar = $("#bar"), hint = $("#hint"), track = $("#track");
+const pad = (n,l=2) => String(n).padStart(l, "0");
+const dots = secs.map((s,i) => {
+  const b = document.createElement("button"); b.type = "button";
+  b.innerHTML = `<i></i><span>${pad(i+1)} · ${s.dataset.name}</span>`;
+  b.setAttribute("aria-label", `Setor ${i+1}: ${s.dataset.name}`);
+  b.addEventListener("click", () => go(i)); track.append(b); return b;
+});
+function go(i){
+  const y = i === 0 ? 0 : i === N-1 ? tops[i] + hs[i] - H : tops[i] + hs[i]*0.2;
+  scrollTo({top:y, behavior: RM ? "auto" : "smooth"});
+}
+function hud(){
+  if (idx !== lastIdx){
+    lastIdx = idx; hSec.textContent = `${pad(idx+1)}/${pad(N)}`; hName.textContent = secs[idx].dataset.name;
+    dots.forEach((d,i) => { d.classList.toggle("on", i === idx); if (i === idx) d.setAttribute("aria-current", "step"); else d.removeAttribute("aria-current"); });
+  }
+  tVel.textContent = pad(Math.round(Math.abs(vel)), 4); tZ.textContent = pad(Math.round(cam.z), 4);
+  tX.textContent = (cam.x >= 0 ? "+" : "") + cam.x.toFixed(1);
+  bar.style.width = (cam.z/END*100).toFixed(2) + "%";
+  hint.classList.toggle("off", scrollY > 60);
+  const y = scrollY;
+  cards.forEach((c,i) => {
+    const f = (y - tops[i]) / hs[i];
+    let o = i === 0 ? 1 : ss(-0.3, -0.06, f);
+    if (i < N-1) o *= 1 - ss(0.55, 0.75, f);
+    c.style.opacity = o.toFixed(3);
+    c.style.transform = `translateY(${((1-o)*24).toFixed(1)}px)`;
+    c.style.pointerEvents = o < 0.4 ? "none" : "";
+  });
+}
+
+/* som (opcional) */
+let au = null;
+const snd = $("#snd");
+snd.addEventListener("click", () => {
+  const on = snd.getAttribute("aria-pressed") !== "true";
+  if (on && !au){
+    const A = new (window.AudioContext || window.webkitAudioContext)();
+    const g = A.createGain(), f = A.createBiquadFilter();
+    g.gain.value = 0; f.type = "lowpass"; f.frequency.value = 300; f.Q.value = 6;
+    [[55,"sawtooth"],[55.4,"sawtooth"],[110.2,"triangle"]].forEach(([fr,ty]) => { const o = A.createOscillator(); o.type = ty; o.frequency.value = fr; o.connect(f); o.start(); });
+    f.connect(g); g.connect(A.destination); au = {A, g, f};
+  }
+  au.A.resume(); au.g.gain.setTargetAtTime(on ? 0.05 : 0, au.A.currentTime, 0.4);
+  snd.setAttribute("aria-pressed", on); snd.textContent = on ? "Som: lig." : "Som: desl.";
+});
+
+/* quadro */
+function frame(now){
+  const dt = Math.min(0.05, (now - last)/1000); last = now;
+  if (!RM) t += dt;
+  const tz = target(), pz = cam.z;
+  cam.z = RM ? tz : cam.z + (tz - cam.z)*(1 - Math.exp(-dt*3.2));
+  if (dt > 0) vel += ((cam.z - pz)/dt - vel)*Math.min(1, dt*6);
+  const s = RM ? 0 : ss(120, 1400, Math.abs(vel));
+  F = F0*(1 - 0.16*s);
+  cam.x = Math.sin(cam.z*0.0011)*2.2; cam.y = 3 + Math.sin(cam.z*0.0007)*0.4;
+  const roll = RM ? 0 : Math.sin(cam.z*0.0017)*0.03 + clamp(vel/9000, -0.04, 0.04);
+  const w = secs.map((_,i) => ss(0, 1, 1 - Math.abs(cam.z - (i+0.5)*SPAN)/(SPAN*0.9)));
+  while (w.length < 6) w.push(0);
+  if (au) au.f.frequency.setTargetAtTime(260 + s*1800 + w[2]*200, au.A.currentTime, 0.2);
+
+  ctx.setTransform(DPR,0,0,DPR,0,0); ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
+  ctx.fillStyle = "#02060A"; ctx.fillRect(0, 0, W, H);
+  ctx.translate(cx, cy); ctx.rotate(roll); ctx.translate(-cx, -cy);
+  const tint = sky(w);
+  mountains(clamp(w[0]*0.35 + w[1] + w[2]*0.6 + w[3]*0.3, 0, 1), tint);
+  ctx.globalCompositeOperation = "lighter"; grid(1 - 0.8*w[4]);
+  ctx.globalCompositeOperation = "source-over"; fog();
+  ctx.globalCompositeOperation = "lighter"; horizon(tint);
+  exitPortal(w[5]); rings(); beacons(); towers();
+  cycles(RM ? 0 : dt, clamp(w[2]*1.25, 0, 1)); sea(w[4]);
+  ctx.setTransform(DPR,0,0,DPR,0,0); streaks(s);
+  hud();
+  if (!RM) requestAnimationFrame(frame);
+}
+
+/* entrada */
+const html = document.documentElement, boot = $("#boot"), laser = $("#laser");
+function enter(){
+  if (!html.classList.contains("locked")) return;
+  const done = () => { html.classList.remove("locked"); boot.hidden = true; laser.hidden = true; };
+  if (RM) return done();
+  boot.classList.add("go"); laser.classList.add("go"); setTimeout(done, 1150);
+}
+$("#enter").addEventListener("click", enter);
+boot.addEventListener("wheel", enter, {passive:true});
+boot.addEventListener("touchmove", enter, {passive:true});
+$("#again").addEventListener("click", () => go(0));
+
+size();
+if (scrollY > 20){ boot.hidden = true; laser.hidden = true; cam.z = target(); }
+else {
+  html.classList.add("locked");
+  const lns = [...boot.querySelectorAll(".ln")], act = $("#bootAct");
+  lns.forEach((l,i) => setTimeout(() => l.classList.add("on"), RM ? 0 : 250 + i*380));
+  setTimeout(() => { act.classList.add("on"); $("#enter").focus({preventScroll:true}); }, RM ? 0 : 250 + lns.length*380);
+}
+addEventListener("resize", () => { size(); if (RM) requestAnimationFrame(frame); });
+if (RM) addEventListener("scroll", () => requestAnimationFrame(frame), {passive:true});
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
