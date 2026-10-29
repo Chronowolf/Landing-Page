@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<!--
+================================================================================
+  ESTILO TRON — modelo de landing page
+  (o mesmo visual do Controle de Equipamentos da Aciges, em versão reutilizável)
+================================================================================
+
+  COMO USAR
+  1. Copie este arquivo (index.html) para o projeto novo.
+  2. Troque os textos das seções (marcadas com "<!- - SEÇÃO: … - ->").
+  3. Apague as seções que não precisar. Cada uma é independente.
+  4. Abra no navegador. Não precisa de build nem de biblioteca: é HTML, CSS e
+     um pouco de JS puro. As únicas dependências externas são as fontes do
+     Google Fonts (Exo 2 e Share Tech Mono).
+
+  IDENTIDADE (o que faz parecer "Tron")
+  - Fundo quase preto (#02060A), nunca cinza.
+  - Uma cor de luz principal: ciano (--cyan). Ela aparece em linhas finas,
+    bordas de 1px, brilho (box-shadow/text-shadow) e no botão principal.
+  - Laranja (--orange) só para alerta ou destaque raro. Nunca para decoração.
+  - Títulos finos (peso 300), em MAIÚSCULAS, com letras espaçadas; uma palavra
+    em destaque com <b> fica em ciano e negrito.
+  - Números, códigos e rótulos pequenos em fonte de terminal (--mono).
+  - Cantos retos. Botões com canto chanfrado (clip-path). Painéis com
+    "cantoneiras" de luz no canto superior esquerdo e inferior direito.
+  - Ao fundo: horizonte brilhando, chão em grade com perspectiva que avança e
+    "motos de luz" (riscos que viram em ângulo reto e deixam rastro).
+
+  PERSONALIZAR
+  - Cor principal: troque --cyan (e os rgba(95,242,255,…) dos brilhos, que são
+    o mesmo ciano com transparência). Ex.: azul #4DA3FF, verde #5CFFB0.
+  - Cor da moto de luz "rival": array COLORS no script (último item, laranja).
+  - Fontes: --display (títulos e texto) e --mono (números/rótulos).
+  - Velocidade do chão: animação "floor" (3.2s). Quantidade de motos: em
+    size(), Math.round(innerWidth / 320).
+  - Sem animação nenhuma: apague <canvas id="cycles"> e o bloco "Motos de luz"
+    do script, e tire "animation" de .floor.
+
+  COMPONENTES DISPONÍVEIS (classes)
+  .eyebrow ........ rótulo pequeno acima do título (mono, ciano, espaçado)
+  h1 / h1 b ....... título fino em maiúsculas; <b> destaca em ciano
+  .btn ............ botão de contorno de luz, canto chanfrado
+  .btn.primary .... botão cheio em ciano (use um por tela)
+  .panel .......... caixa escura com borda e cantoneiras de luz
+  .stat ........... número grande + rótulo (indicadores)
+  .stat.alert ..... mesma coisa em laranja
+  .card ........... cartão de recurso/benefício com ícone
+  .disc ........... "disco de identidade" (círculo com anel de luz) p/ avatar
+  .pill / .tag .... etiquetas de status (ciano, verde, laranja, vermelho)
+  .sect ........... título de seção com linha que se apaga para a direita
+  .field .......... campo de formulário (input/select/textarea)
+  .win-bar ........ barra de título de "janela" com três traços de luz
+
+  CUIDADOS
+  - Contraste: texto corrido em --ink (#DDF6FF) ou --muted (#7FA3B3). Não use
+    --dim para texto que precisa ser lido; ele é só para placeholder.
+  - Acessibilidade: @media (prefers-reduced-motion) já para o chão e as motos.
+    Mantenha o :focus-visible (contorno ciano) em tudo que for clicável.
+  - Celular: abaixo de 760px as grades viram uma coluna e o título diminui.
+    Teste com 360px de largura.
+  - Brilho demais cansa: use glow em títulos, bordas ativas e no botão
+    principal. Texto corrido sem text-shadow.
+  - O tema é só escuro, de propósito. Não existe versão clara deste estilo.
+================================================================================
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nome do Produto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+/* ---------- Tokens ---------- */
+:root{
+  --bg:#02060A; --ink:#DDF6FF; --muted:#7FA3B3; --dim:#3E5966; --white:#F2FDFF;
+  --cyan:#5FF2FF; --cyan-soft:rgba(95,242,255,.10); --cyan-line:rgba(95,242,255,.28);
+  --glow:0 0 6px rgba(95,242,255,.55),0 0 18px rgba(95,242,255,.25);
+  --orange:#FF9A2E; --orange-soft:rgba(255,154,46,.12);
+  --green:#7CFFB2; --green-soft:rgba(124,255,178,.10);
+  --red:#FF4F5E; --red-soft:rgba(255,79,94,.12);
+  --panel:rgba(2,10,16,.72); --field:rgba(0,0,0,.45);
+  --line:rgba(95,242,255,.14); --line-2:rgba(95,242,255,.32);
+  --mono:"Share Tech Mono",ui-monospace,Consolas,monospace;
+  --display:"Exo 2",system-ui,sans-serif;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+/* Fundo no html (não no body): no body ele cobriria o canvas, que fica atrás com z-index negativo. */
+html{background:var(--bg);scroll-behavior:smooth}
+body{margin:0;color:var(--ink);font-family:var(--display);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased;min-height:100vh}
+a{color:var(--cyan)}
+:focus-visible{outline:1px solid var(--cyan);outline-offset:3px}
+
+/* ---------- Fundo: céu, horizonte, chão em grade, motos de luz, linhas de varredura ---------- */
+.sky{position:fixed;inset:0;z-index:-4;pointer-events:none;
+  background:radial-gradient(ellipse 80% 45% at 50% 62%,rgba(27,200,224,.16),transparent 70%),
+    linear-gradient(#010306 0%,#03101A 58%,#010407 100%)}
+.horizon{position:fixed;left:0;right:0;top:38vh;height:1px;z-index:-3;pointer-events:none;background:var(--cyan);
+  box-shadow:0 0 8px var(--cyan),0 0 30px rgba(95,242,255,.6),0 0 80px rgba(95,242,255,.35);opacity:.8}
+.floor{position:fixed;left:-50%;right:-50%;bottom:-10vh;height:62vh;z-index:-3;pointer-events:none;
+  transform-origin:50% 0;transform:perspective(420px) rotateX(62deg);
+  background-image:linear-gradient(var(--cyan-line) 1px,transparent 1px),linear-gradient(90deg,var(--cyan-line) 1px,transparent 1px);
+  background-size:72px 72px;animation:floor 3.2s linear infinite;
+  -webkit-mask-image:linear-gradient(transparent,#000 30%);mask-image:linear-gradient(transparent,#000 30%)}
+@keyframes floor{to{background-position:0 72px}}
+#cycles{position:fixed;inset:0;width:100%;height:100%;z-index:-2;pointer-events:none}
+.scan{position:fixed;inset:0;z-index:-1;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(95,242,255,.025) 0 1px,transparent 1px 4px)}
+
+/* ---------- Layout ---------- */
+.wrap{max-width:1200px;margin:0 auto;padding:0 22px}
+section{padding:72px 0}
+
+/* ---------- Navegação ---------- */
+.nav{position:sticky;top:0;z-index:10;background:rgba(2,6,10,.75);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.nav .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;height:64px}
+.logo{font-family:var(--mono);letter-spacing:.3em;text-transform:uppercase;color:var(--cyan);text-shadow:var(--glow);text-decoration:none}
+.nav ul{display:flex;gap:26px;list-style:none;margin:0;padding:0}
+.nav ul a{color:var(--muted);text-decoration:none;font-size:13px;font-weight:600;letter-spacing:.16em;text-transform:uppercase}
+.nav ul a:hover{color:var(--white);text-shadow:var(--glow)}
+
+/* ---------- Tipografia ---------- */
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.32em;color:var(--cyan);text-transform:uppercase;text-shadow:var(--glow)}
+h1{font-weight:300;font-size:clamp(34px,6vw,64px);line-height:1.05;margin:14px 0 0;letter-spacing:.12em;text-transform:uppercase;color:var(--white);
+  text-shadow:0 0 10px rgba(95,242,255,.45),0 0 28px rgba(95,242,255,.2)}
+h1 b,h2 b{font-weight:700;color:var(--cyan)}
+h2{font-weight:300;font-size:clamp(26px,3.5vw,38px);letter-spacing:.1em;text-transform:uppercase;color:var(--white);margin:10px 0 0}
+.lead{color:var(--muted);font-size:18px;max-width:620px;margin:18px 0 0}
+.sect{font-family:var(--mono);font-size:12px;letter-spacing:.3em;color:var(--cyan);display:flex;align-items:center;gap:12px;text-transform:uppercase}
+.sect::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--cyan),transparent);box-shadow:0 0 6px rgba(95,242,255,.4)}
+
+/* ---------- Botões ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 26px;border:none;cursor:pointer;text-decoration:none;
+  font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan);
+  background:rgba(95,242,255,.06);box-shadow:inset 0 0 0 1px var(--cyan),inset 0 0 14px rgba(95,242,255,.12);
+  clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)}
+.btn:hover{background:rgba(95,242,255,.16);text-shadow:var(--glow)}
+.btn.primary{color:#001218;background:var(--cyan);box-shadow:0 0 18px rgba(95,242,255,.5)}
+.btn.primary:hover{background:var(--white);text-shadow:none}
+.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
+
+/* ---------- Painel com cantoneiras ---------- */
+.panel{position:relative;background:var(--panel);border:1px solid var(--line-2);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);box-shadow:0 0 30px rgba(27,200,224,.08) inset}
+.panel::before,.panel::after{content:"";position:absolute;width:18px;height:18px;border:2px solid var(--cyan);pointer-events:none;filter:drop-shadow(0 0 4px var(--cyan))}
+.panel::before{left:-2px;top:-2px;border-right:none;border-bottom:none}
+.panel::after{right:-2px;bottom:-2px;border-left:none;border-top:none}
+
+/* Barra de "janela" (opcional, no topo de um .panel) */
+.win-bar{display:flex;align-items:center;gap:14px;padding:11px 18px;border-bottom:1px solid var(--line-2);background:linear-gradient(90deg,rgba(95,242,255,.12),transparent 60%)}
+.win-bar .dots{display:flex;gap:5px}
+.win-bar .dots i{width:16px;height:3px;background:var(--cyan);box-shadow:var(--glow)}
+.win-bar .dots i:nth-child(2){width:8px;opacity:.6}
+.win-bar .dots i:nth-child(3){width:4px;opacity:.35}
+.win-bar span{font-family:var(--mono);font-size:12px;letter-spacing:.3em;color:var(--cyan);text-transform:uppercase}
+
+/* ---------- Indicadores ---------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:48px}
+.stat{position:relative;padding:18px 20px;background:var(--panel);border:1px solid var(--line)}
+.stat::before{content:"";position:absolute;left:0;top:0;width:34px;height:2px;background:var(--cyan);box-shadow:var(--glow)}
+.stat .v{font-family:var(--mono);font-size:38px;line-height:1;color:var(--white);text-shadow:0 0 10px rgba(95,242,255,.4)}
+.stat .l{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan);margin-top:8px}
+.stat.alert::before{background:var(--orange);box-shadow:0 0 8px var(--orange)}
+.stat.alert .v{color:var(--orange);text-shadow:0 0 12px rgba(255,154,46,.5)}
+.stat.alert .l{color:var(--orange)}
+
+/* ---------- Cartões de recurso ---------- */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:28px}
+.card{padding:22px;background:rgba(0,0,0,.4);border:1px solid var(--line);transition:border-color .15s,box-shadow .15s}
+.card:hover{border-color:var(--cyan);box-shadow:0 0 18px rgba(95,242,255,.18)}
+.card h3{margin:14px 0 6px;font-size:17px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--white)}
+.card p{margin:0;color:var(--muted);font-size:15px}
+.ico{width:40px;height:40px;display:grid;place-items:center;color:var(--cyan);border:1px solid var(--line-2);background:var(--field)}
+.ico svg{width:20px;height:20px;filter:drop-shadow(0 0 3px var(--cyan))}
+
+/* ---------- Disco de identidade (avatar) ---------- */
+.disc{flex:none;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-family:var(--mono);font-size:15px;color:var(--cyan);
+  border:2px solid var(--cyan);box-shadow:0 0 8px rgba(95,242,255,.6),inset 0 0 8px rgba(95,242,255,.4);
+  background:radial-gradient(circle,transparent 52%,rgba(95,242,255,.55) 54%,transparent 57%)}
+.quote{display:flex;gap:18px;align-items:flex-start;padding:24px}
+.quote p{margin:0;font-size:17px;color:var(--ink)}
+.quote small{display:block;margin-top:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+
+/* ---------- Etiquetas ---------- */
+.pill{display:inline-block;font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;padding:2px 10px;border:1px solid currentColor}
+.pill.cyan{color:var(--cyan);background:var(--cyan-soft)}
+.pill.green{color:var(--green);background:var(--green-soft)}
+.pill.orange{color:var(--orange);background:var(--orange-soft)}
+.pill.red{color:var(--red);background:var(--red-soft)}
+
+/* ---------- Formulário ---------- */
+.form{display:grid;gap:14px;padding:24px}
+.form label{display:grid;gap:6px;font-size:11.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.field{font:inherit;font-size:15px;text-transform:none;letter-spacing:normal;color:var(--ink);background:var(--field);border:1px solid var(--line-2);border-radius:0;padding:11px 14px}
+.field::placeholder{color:var(--dim)}
+.field:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 12px rgba(95,242,255,.25)}
+
+/* ---------- Rodapé ---------- */
+footer{border-top:1px solid var(--line);padding:28px 0 40px;color:var(--muted);font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+
+.two-col{display:grid;grid-template-columns:1.1fr .9fr;gap:28px;align-items:start;margin-top:28px}
+
+@media (max-width:760px){
+  section{padding:52px 0}
+  .nav ul{display:none}
+  .two-col{grid-template-columns:1fr}
+  h1{letter-spacing:.06em}
+}
+@media (prefers-reduced-motion:reduce){.floor{animation:none}html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<!-- Camadas de fundo: mantenha nesta ordem. -->
+<div class="sky" aria-hidden="true"></div>
+<div class="horizon" aria-hidden="true"></div>
+<div class="floor" aria-hidden="true"></div>
+<canvas id="cycles" aria-hidden="true"></canvas>
+<div class="scan" aria-hidden="true"></div>
+
+<!-- SEÇÃO: navegação -->
+<nav class="nav">
+  <div class="wrap">
+    <a class="logo" href="#">Produto</a>
+    <ul>
+      <li><a href="#recursos">Recursos</a></li>
+      <li><a href="#numeros">Números</a></li>
+      <li><a href="#contato">Contato</a></li>
+    </ul>
+    <a class="btn primary" href="#contato">Começar</a>
+  </div>
+</nav>
+
+<main>
+  <!-- SEÇÃO: hero -->
+  <section>
+    <div class="wrap">
+      <div class="eyebrow">Aciges · TI · Lançamento</div>
+      <h1>Título da <b>página</b></h1>
+      <p class="lead">Uma frase curta dizendo o que o produto faz e para quem. Duas linhas no máximo.</p>
+      <div class="actions">
+        <a class="btn primary" href="#contato">Ação principal</a>
+        <a class="btn" href="#recursos">Saiba mais</a>
+      </div>
+
+      <!-- SEÇÃO: números (indicadores) -->
+      <div class="stats" id="numeros">
+        <div class="stat"><div class="v">31</div><div class="l">Itens controlados</div></div>
+        <div class="stat"><div class="v">25</div><div class="l">Pessoas atendidas</div></div>
+        <div class="stat"><div class="v">60s</div><div class="l">Atualização</div></div>
+        <div class="stat alert"><div class="v">05</div><div class="l">Pendências</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO: recursos -->
+  <section id="recursos">
+    <div class="wrap">
+      <div class="sect">Recursos</div>
+      <h2>O que <b>muda</b> no dia a dia</h2>
+      <div class="cards">
+        <article class="card">
+          <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v10H4zM2 18h20" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></span>
+          <h3>Recurso um</h3>
+          <p>Explique o benefício em uma ou duas frases, sem jargão.</p>
+        </article>
+        <article class="card">
+          <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 5 14h6l-1 8 8-12h-6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+          <h3>Recurso dois</h3>
+          <p>Outro benefício. Mantenha os três cartões com texto de tamanho parecido.</p>
+        </article>
+        <article class="card">
+          <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="1.6"/></svg></span>
+          <h3>Recurso três</h3>
+          <p>Etiquetas de status: <span class="pill cyan">Novo</span> <span class="pill green">Ativo</span> <span class="pill orange">Alerta</span></p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEÇÃO: depoimento + formulário de contato -->
+  <section id="contato">
+    <div class="wrap">
+      <div class="sect">Contato</div>
+      <h2>Fale com o <b>TI</b></h2>
+      <div class="two-col">
+        <div class="panel">
+          <div class="win-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span>Depoimento</span></div>
+          <div class="quote">
+            <span class="disc">GR</span>
+            <div>
+              <p>"Um depoimento curto de quem usa. Uma ou duas frases."</p>
+              <small>Nome · Cargo</small>
+            </div>
+          </div>
+        </div>
+        <form class="panel form" onsubmit="event.preventDefault()">
+          <label>Nome <input class="field" type="text" placeholder="Seu nome"></label>
+          <label>E-mail <input class="field" type="email" placeholder="voce@empresa.com.br"></label>
+          <label>Assunto
+            <select class="field"><option>Dúvida</option><option>Suporte</option><option>Outro</option></select>
+          </label>
+          <label>Mensagem <textarea class="field" rows="4" placeholder="Escreva aqui"></textarea></label>
+          <button class="btn primary" type="submit">Enviar</button>
+        </form>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- SEÇÃO: rodapé -->
+<footer>
+  <div class="wrap">
+    <span>© 2026 Aciges · TI</span>
+    <span>Grid 01 // online</span>
+  </div>
+</footer>
+
+<script>
+/* ---------- Motos de luz ----------
+   Riscos de luz andando numa grade invisível (CELL px), virando sempre 90° e deixando rastro.
+   O rastro some apagando o canvas aos poucos (destination-out). Para no "movimento reduzido". */
+(function cycles(){
+  const c = document.getElementById("cycles"), ctx = c.getContext("2d");
+  const CELL = 48, still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const COLORS = ["95,242,255", "95,242,255", "95,242,255", "255,154,46"];   // 3 ciano + 1 laranja
+  const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+  let bikes = [], last = 0;
+  function spawn(i){
+    return { x: Math.floor(Math.random() * innerWidth / CELL) * CELL, y: Math.floor(Math.random() * innerHeight / CELL) * CELL,
+      d: DIRS[Math.floor(Math.random() * 4)], col: COLORS[i % COLORS.length], speed: 3 + Math.random() * 2.5 };
+  }
+  function size(){
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    c.width = innerWidth * dpr; c.height = innerHeight * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    bikes = Array.from({ length: Math.max(4, Math.round(innerWidth / 320)) }, (_, i) => spawn(i));
+  }
+  function step(){
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.fillStyle = "rgba(0,0,0,.035)"; ctx.fillRect(0, 0, innerWidth, innerHeight);
+    ctx.globalCompositeOperation = "lighter";
+    bikes.forEach((b, i) => {
+      const nx = b.x + b.d[0] * b.speed, ny = b.y + b.d[1] * b.speed;
+      ctx.strokeStyle = `rgba(${b.col},.85)`; ctx.lineWidth = 1.6;
+      ctx.shadowColor = `rgba(${b.col},1)`; ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(nx, ny); ctx.stroke();
+      b.x = nx; b.y = ny;
+      if (Math.abs(b.x % CELL) < b.speed && Math.abs(b.y % CELL) < b.speed && Math.random() < .22) {
+        b.x = Math.round(b.x / CELL) * CELL; b.y = Math.round(b.y / CELL) * CELL;
+        b.d = Math.random() < .5 ? [b.d[1], -b.d[0]] : [-b.d[1], b.d[0]];
+      }
+      if (b.x < -20 || b.y < -20 || b.x > innerWidth + 20 || b.y > innerHeight + 20) bikes[i] = spawn(i);
+    });
+    ctx.shadowBlur = 0;
+  }
+  function loop(t){
+    if (t - last > 16) { last = t; step(); }
+    if (!document.hidden) requestAnimationFrame(loop);
+  }
+  size();
+  addEventListener("resize", size);
+  if (still) { for (let i = 0; i < 160; i++) step(); return; }
+  requestAnimationFrame(loop);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) requestAnimationFrame(loop); });
+})();
+</script>
+</body>
+</html>
